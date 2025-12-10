@@ -13,7 +13,7 @@ use bevy_app::{App, Plugin, PostUpdate, Update};
 use bevy_ecs::prelude::*;
 use derive_more::{Deref, DerefMut};
 use indexing::EntityUuidIndex;
-pub use relative_updates::RelativeEntityUpdate;
+pub use relative_updates::{RelativeEntityUpdate, UpdatesReceived};
 use tracing::debug;
 
 use crate::{

@@ -73,7 +73,13 @@ impl EntityCommand for RelativeEntityUpdate {
             return;
         };
 
-        let entity_id = *entity.get::<MinecraftEntityId>().unwrap();
+        let Some(entity_id) = entity.get::<MinecraftEntityId>().copied() else {
+            warn!(
+                "Entity {:?} missing MinecraftEntityId component in RelativeEntityUpdate",
+                entity.id()
+            );
+            return;
+        };
         if entity.contains::<LocalEntity>() {
             // a client tried to update another client, which isn't allowed
             return;
