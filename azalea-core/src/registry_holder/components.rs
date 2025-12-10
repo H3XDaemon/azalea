@@ -204,8 +204,14 @@ impl<T: simdnbt::Deserialize + Debug + Clone> simdnbt::Deserialize
 macro_rules! declare_newtype_components {
     ( $( $struct_name:ident: $inner_type:ty ),* $(,)? ) => {
         $(
-            #[derive(Clone, Debug, simdnbt::Deserialize)]
+            #[derive(Clone, Debug)]
             pub struct $struct_name(pub $inner_type);
+
+            impl simdnbt::Deserialize for $struct_name {
+                fn from_compound(nbt: simdnbt::borrow::NbtCompound) -> Result<Self, simdnbt::DeserializeError> {
+                    Ok(Self(simdnbt::Deserialize::from_compound(nbt)?))
+                }
+            }
             impl_from_effect_nbt_tag!($struct_name);
         )*
     };
@@ -239,8 +245,15 @@ declare_newtype_components! {
 
 }
 
-#[derive(Clone, Debug, simdnbt::Deserialize)]
+#[derive(Clone, Debug)]
 pub struct DamageImmunity {}
+impl simdnbt::Deserialize for DamageImmunity {
+    fn from_compound(
+        _nbt: simdnbt::borrow::NbtCompound,
+    ) -> Result<Self, simdnbt::DeserializeError> {
+        Ok(Self {})
+    }
+}
 impl_from_effect_nbt_tag!(DamageImmunity);
 
 #[derive(Clone, Debug)]
@@ -306,16 +319,37 @@ impl TridentSound {
     }
 }
 
-#[derive(Clone, Debug, simdnbt::Deserialize)]
+#[derive(Clone, Debug)]
 pub struct LocationBasedEffect {
     // TODO
 }
+impl simdnbt::Deserialize for LocationBasedEffect {
+    fn from_compound(
+        _nbt: simdnbt::borrow::NbtCompound,
+    ) -> Result<Self, simdnbt::DeserializeError> {
+        Ok(Self {})
+    }
+}
 impl_from_effect_nbt_tag!(LocationBasedEffect);
 
-#[derive(Clone, Debug, simdnbt::Deserialize)]
+#[derive(Clone, Debug)]
 pub struct PreventEquipmentDrop {}
+impl simdnbt::Deserialize for PreventEquipmentDrop {
+    fn from_compound(
+        _nbt: simdnbt::borrow::NbtCompound,
+    ) -> Result<Self, simdnbt::DeserializeError> {
+        Ok(Self {})
+    }
+}
 impl_from_effect_nbt_tag!(PreventEquipmentDrop);
 
-#[derive(Clone, Debug, simdnbt::Deserialize)]
+#[derive(Clone, Debug)]
 pub struct PreventArmorChange {}
+impl simdnbt::Deserialize for PreventArmorChange {
+    fn from_compound(
+        _nbt: simdnbt::borrow::NbtCompound,
+    ) -> Result<Self, simdnbt::DeserializeError> {
+        Ok(Self {})
+    }
+}
 impl_from_effect_nbt_tag!(PreventArmorChange);
