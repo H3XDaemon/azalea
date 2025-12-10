@@ -61,7 +61,7 @@ pub fn handle_outgoing_packets_observer(
 
     if let Ok((mut raw_connection, in_game_state)) = query.get_mut(event.sent_by) {
         if in_game_state.is_none() {
-            error!(
+            tracing::debug!(
                 "Tried to send a game packet {:?} while not in game state",
                 event.packet
             );

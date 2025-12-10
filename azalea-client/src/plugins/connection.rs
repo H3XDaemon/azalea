@@ -158,6 +158,11 @@ impl QueuedPacketEvents {
 
 fn log_for_error(error: &ReadPacketError) {
     if !matches!(*error, ReadPacketError::ConnectionClosed) {
+        let err_str = format!("{error:?}");
+        if err_str.contains("Invalid root type 2") {
+            tracing::debug!("Ignored packet error: {err_str}");
+            return;
+        }
         error!("Error reading packet from Client: {error:?}");
     }
 }

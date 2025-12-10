@@ -73,6 +73,11 @@ impl EntityCommand for RelativeEntityUpdate {
             return;
         };
 
+        if entity.contains::<LocalEntity>() {
+            // a client tried to update another client, which isn't allowed
+            return;
+        }
+
         let Some(entity_id) = entity.get::<MinecraftEntityId>().copied() else {
             warn!(
                 "Entity {:?} missing MinecraftEntityId component in RelativeEntityUpdate",
@@ -80,10 +85,6 @@ impl EntityCommand for RelativeEntityUpdate {
             );
             return;
         };
-        if entity.contains::<LocalEntity>() {
-            // a client tried to update another client, which isn't allowed
-            return;
-        }
 
         let this_client_updates_received = partial_entity_infos
             .updates_received
