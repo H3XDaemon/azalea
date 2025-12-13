@@ -1,8 +1,9 @@
 use std::io::{self, Cursor, Write};
 
 use azalea_buf::{AzBuf, AzaleaRead, AzaleaReadVar, AzaleaWrite, AzaleaWriteVar, BufReadError};
-use azalea_core::{bitset::FixedBitSet, identifier::Identifier};
+use azalea_core::bitset::FixedBitSet;
 use azalea_protocol_macros::ClientboundGamePacket;
+use azalea_registry::identifier::Identifier;
 use tracing::warn;
 
 #[derive(Clone, Debug, AzBuf, PartialEq, ClientboundGamePacket)]
@@ -359,7 +360,7 @@ mod tests {
             children: vec![],
             redirect_node: None,
             node_type: NodeType::Literal {
-                name: "String".to_string(),
+                name: "String".to_owned(),
             },
             is_restricted: false,
         };
@@ -377,7 +378,7 @@ mod tests {
             children: vec![6, 9],
             redirect_node: Some(5),
             node_type: NodeType::Argument {
-                name: "position".to_string(),
+                name: "position".to_owned(),
                 parser: BrigadierParser::Vec3,
                 suggestions_type: Some(Identifier::new("minecraft:test_suggestion")),
             },

@@ -6,7 +6,7 @@ use std::{
 use azalea_block::BlockState;
 use azalea_buf::{AzaleaRead, AzaleaWrite, BufReadError};
 use azalea_core::position::{ChunkSectionBiomePos, ChunkSectionBlockPos};
-use azalea_registry::Biome;
+use azalea_registry::data::Biome;
 use tracing::{debug, warn};
 
 use super::{Palette, PaletteKind};
@@ -134,7 +134,7 @@ impl<S: PalletedContainerKind> PalettedContainer<S> {
             Err(e) => {
                 warn!("Failed to create bit storage: {:?}", e);
                 return Err(BufReadError::Custom(
-                    "Failed to create bit storage".to_string(),
+                    "Failed to create bit storage".to_owned(),
                 ));
             }
         };

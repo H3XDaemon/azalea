@@ -4,10 +4,11 @@ use std::sync::Arc;
 
 use azalea::{BlockPos, pathfinder::goals::RadiusGoal, prelude::*};
 use azalea_inventory::{ItemStack, operations::QuickMoveClick};
+use azalea_registry::builtin::{BlockKind, ItemKind};
 use parking_lot::Mutex;
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() {
+#[tokio::main]
+async fn main() -> AppExit {
     let account = Account::offline("bot");
     // or let bot = Account::microsoft("email").await.unwrap();
 
@@ -15,7 +16,6 @@ async fn main() {
         .set_handler(handle)
         .start(account, "localhost")
         .await
-        .unwrap();
 }
 
 #[derive(Default, Clone, Component)]
@@ -55,7 +55,7 @@ async fn steal(bot: Client, state: State) -> anyhow::Result<()> {
         let chest_block = bot
             .world()
             .read()
-            .find_blocks(bot.position(), &azalea::registry::Block::Chest.into())
+            .find_blocks(bot.position(), &BlockKind::Chest.into())
             .find(
                 // find the closest chest that hasn't been checked
                 |block_pos| !state.checked_chests.lock().contains(block_pos),
@@ -79,7 +79,7 @@ async fn steal(bot: Client, state: State) -> anyhow::Result<()> {
             let ItemStack::Present(item) = slot else {
                 continue;
             };
-            if item.kind == azalea::registry::Item::Diamond {
+            if item.kind == ItemKind::Diamond {
                 println!("clicking slot ^");
                 chest.click(QuickMoveClick::Left { slot: index as u16 });
             }

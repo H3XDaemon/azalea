@@ -15,33 +15,42 @@ use std::{net::SocketAddr, time::Duration};
 
 use app::Plugins;
 pub use azalea_auth as auth;
-pub use azalea_block as blocks;
+pub use azalea_block as block;
+#[doc(hidden)]
+#[deprecated = "moved to `azalea::block`"]
+pub mod blocks {
+    pub type BlockStates = azalea_block::BlockStates;
+    pub type BlockState = azalea_block::BlockState;
+    pub trait BlockTrait: azalea_block::BlockTrait {}
+    // azalea_block has more items but rust doesn't mark them deprecated if we
+    // `use azalea_block::*`, so hopefully the three types above are enough for
+    // most users :(
+}
+
 pub use azalea_brigadier as brigadier;
 pub use azalea_buf as buf;
 pub use azalea_chat::FormattedText;
 pub use azalea_client::*;
 pub use azalea_core as core;
-#[deprecated(note = "renamed to `Identifier`.")]
-#[expect(deprecated)]
-pub use azalea_core::resource_location::ResourceLocation;
 // these are re-exported on this level because they're very common
-pub use azalea_core::{
-    identifier::Identifier,
-    position::{BlockPos, Vec3},
-};
+pub use azalea_core::position::{BlockPos, Vec3};
 pub use azalea_entity as entity;
 pub use azalea_physics as physics;
 pub use azalea_protocol as protocol;
+use azalea_protocol::address::{ResolvableAddr, ServerAddr};
 pub use azalea_registry as registry;
+#[doc(hidden)]
+#[deprecated(note = "renamed to `Identifier`.")]
+pub use azalea_registry::identifier::Identifier as ResourceLocation;
+pub use azalea_registry::identifier::Identifier;
 pub use azalea_world as world;
 pub use bevy_app as app;
 use bevy_app::AppExit;
 pub use bevy_ecs as ecs;
 use ecs::component::Component;
 use futures::{Future, future::BoxFuture};
-use protocol::{ServerAddress, connect::Proxy, resolve::ResolveError};
+use protocol::connect::Proxy;
 use swarm::SwarmBuilder;
-use thiserror::Error;
 
 use crate::bot::DefaultBotPlugins;
 
@@ -49,21 +58,12 @@ pub type BoxHandleFn<S, R> =
     Box<dyn Fn(Client, azalea_client::Event, S) -> BoxFuture<'static, R> + Send>;
 pub type HandleFn<S, Fut> = fn(Client, azalea_client::Event, S) -> Fut;
 
-/// An error related to resolving the server address when starting a client.
-#[derive(Error, Debug)]
-pub enum StartError {
-    #[error("Invalid address")]
-    InvalidAddress,
-    #[error(transparent)]
-    ResolveAddress(#[from] ResolveError),
-}
-
 /// A builder for creating new [`Client`]s. This is the recommended way of
 /// making a bot.
 ///
 /// ```no_run
 /// # use azalea::prelude::*;
-/// # #[tokio::main(flavor = "current_thread")]
+/// # #[tokio::main]
 /// # async fn main() {
 /// ClientBuilder::new()
 ///     .set_handler(handle)
@@ -208,20 +208,17 @@ where
     ///
     /// If the client can't join, it'll keep retrying forever until it can.
     ///
-    /// The `address` argument can be a `&str`, [`ServerAddress`], or anything
-    /// that implements `TryInto<ServerAddress>`.
+    /// The `address` argument can be a `&str`, [`ServerAddr`],
+    /// [`ResolvedAddr`], or anything else that implements [`ResolvableAddr`].
     ///
     /// # Errors
     ///
     /// This will error if the given address is invalid or couldn't be resolved
     /// to a Minecraft server.
     ///
-    /// [`ServerAddress`]: azalea_protocol::ServerAddress
-    pub async fn start(
-        mut self,
-        account: Account,
-        address: impl TryInto<ServerAddress>,
-    ) -> Result<AppExit, StartError> {
+    /// [`ServerAddr`]: azalea_protocol::address::ServerAddr
+    /// [`ResolvedAddr`]: azalea_protocol::address::ResolvedAddr
+    pub async fn start(mut self, account: Account, address: impl ResolvableAddr) -> AppExit {
         self.swarm.accounts = vec![(account, JoinOpts::default())];
         if self.swarm.states.is_empty() {
             self.swarm.states = vec![S::default()];
@@ -234,14 +231,14 @@ where
     pub async fn start_with_opts(
         mut self,
         account: Account,
-        address: impl TryInto<ServerAddress>,
+        address: impl ResolvableAddr,
         opts: JoinOpts,
-    ) -> Result<AppExit, StartError> {
+    ) -> AppExit {
         self.swarm.accounts = vec![(account, opts.clone())];
         if self.swarm.states.is_empty() {
             self.swarm.states = vec![S::default()];
         }
-        self.swarm.start_with_default_opts(address, opts).await
+        self.swarm.start_with_opts(address, opts).await
     }
 }
 impl Default for ClientBuilder<NoState, ()> {
@@ -264,14 +261,26 @@ pub struct NoState;
 #[derive(Clone, Debug, Default)]
 #[non_exhaustive]
 pub struct JoinOpts {
-    /// The Socks5 proxy that this bot will use.
-    pub proxy: Option<Proxy>,
+    /// The SOCKS5 proxy that this bot will use for connecting to the Minecraft
+    /// server.
+    pub server_proxy: Option<Proxy>,
+    /// The SOCKS5 proxy that will be used when authenticating the bot's join
+    /// with Mojang.
+    ///
+    /// This should typically be either the same as [`Self::server_proxy`] or
+    /// `None`.
+    ///
+    /// This is useful to set if a server has `prevent-proxy-connections`
+    /// enabled.
+    pub sessionserver_proxy: Option<Proxy>,
     /// Override the server address that this specific bot will send in the
     /// handshake packet.
-    pub custom_address: Option<ServerAddress>,
-    /// Override the socket address that this specific bot will use to connect
+    #[doc(alias = "custom_address")]
+    pub custom_server_addr: Option<ServerAddr>,
+    /// Override the IP and port that this specific bot will use to connect
     /// to the server.
-    pub custom_resolved_address: Option<SocketAddr>,
+    #[doc(alias = "custom_resolved_address")]
+    pub custom_socket_addr: Option<SocketAddr>,
 }
 
 impl JoinOpts {
@@ -280,34 +289,74 @@ impl JoinOpts {
     }
 
     pub fn update(&mut self, other: &Self) {
-        if let Some(proxy) = other.proxy.clone() {
-            self.proxy = Some(proxy);
+        if let Some(proxy) = other.server_proxy.clone() {
+            self.server_proxy = Some(proxy);
         }
-        if let Some(custom_address) = other.custom_address.clone() {
-            self.custom_address = Some(custom_address);
+        if let Some(proxy) = other.sessionserver_proxy.clone() {
+            self.sessionserver_proxy = Some(proxy);
         }
-        if let Some(custom_resolved_address) = other.custom_resolved_address {
-            self.custom_resolved_address = Some(custom_resolved_address);
+        if let Some(custom_server_addr) = other.custom_server_addr.clone() {
+            self.custom_server_addr = Some(custom_server_addr);
+        }
+        if let Some(custom_socket_addr) = other.custom_socket_addr {
+            self.custom_socket_addr = Some(custom_socket_addr);
         }
     }
 
-    /// Set the proxy that this bot will use.
+    /// Configure the SOCKS5 proxy used for connecting to the server and for
+    /// authenticating with Mojang.
+    ///
+    /// To configure these separately, for example to only use the proxy for the
+    /// Minecraft server and not for authentication, you may use
+    /// [`Self::server_proxy`] and [`Self::sessionserver_proxy`] individually.
     #[must_use]
-    pub fn proxy(mut self, proxy: Proxy) -> Self {
-        self.proxy = Some(proxy);
+    pub fn proxy(self, proxy: Proxy) -> Self {
+        self.server_proxy(proxy.clone()).sessionserver_proxy(proxy)
+    }
+    /// Configure the SOCKS5 proxy that will be used for connecting to the
+    /// Minecraft server.
+    ///
+    /// To avoid errors on servers with the "prevent-proxy-connections" option
+    /// set, you should usually use [`Self::proxy`] instead.
+    ///
+    /// Also see [`Self::sessionserver_proxy`].
+    #[must_use]
+    pub fn server_proxy(mut self, proxy: Proxy) -> Self {
+        self.server_proxy = Some(proxy);
         self
     }
+    /// Configure the SOCKS5 proxy that this bot will use for authenticating the
+    /// server join with Mojang's API.
+    ///
+    /// Also see [`Self::proxy`] and [`Self::server_proxy`].
+    #[must_use]
+    pub fn sessionserver_proxy(mut self, proxy: Proxy) -> Self {
+        self.sessionserver_proxy = Some(proxy);
+        self
+    }
+
     /// Set the custom address that this bot will send in the handshake packet.
     #[must_use]
-    pub fn custom_address(mut self, custom_address: ServerAddress) -> Self {
-        self.custom_address = Some(custom_address);
+    pub fn custom_server_addr(mut self, server_addr: ServerAddr) -> Self {
+        self.custom_server_addr = Some(server_addr);
         self
     }
     /// Set the custom resolved address that this bot will use to connect to the
     /// server.
     #[must_use]
-    pub fn custom_resolved_address(mut self, custom_resolved_address: SocketAddr) -> Self {
-        self.custom_resolved_address = Some(custom_resolved_address);
+    pub fn custom_socket_addr(mut self, socket_addr: SocketAddr) -> Self {
+        self.custom_socket_addr = Some(socket_addr);
         self
+    }
+
+    #[doc(hidden)]
+    #[deprecated = "renamed to `custom_server_addr`."]
+    pub fn custom_address(self, server_addr: ServerAddr) -> Self {
+        self.custom_server_addr(server_addr)
+    }
+    #[doc(hidden)]
+    #[deprecated = "renamed to `custom_socket_addr`."]
+    pub fn custom_resolved_address(self, socket_addr: SocketAddr) -> Self {
+        self.custom_socket_addr(socket_addr)
     }
 }

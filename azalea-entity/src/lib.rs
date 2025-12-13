@@ -1,3 +1,4 @@
+#![doc = include_str!("../README.md")]
 #![allow(clippy::derived_hash_with_manual_eq)]
 
 pub mod attributes;
@@ -22,11 +23,10 @@ use azalea_block::{BlockState, fluid_state::FluidKind};
 use azalea_buf::AzBuf;
 use azalea_core::{
     aabb::Aabb,
-    identifier::Identifier,
     math,
     position::{BlockPos, ChunkPos, Vec3},
 };
-use azalea_registry::EntityKind;
+use azalea_registry::{builtin::EntityKind, identifier::Identifier};
 use azalea_world::{ChunkStorage, InstanceName};
 use bevy_ecs::{bundle::Bundle, component::Component};
 pub use data::*;
@@ -460,12 +460,12 @@ impl Physics {
 #[derive(Component, Copy, Clone, Default)]
 pub struct Dead;
 
-/// A component NewType for [`azalea_registry::EntityKind`].
+/// A component NewType for [`EntityKind`].
 ///
 /// Most of the time, you should be using `azalea_registry::EntityKind`
 /// directly instead.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Deref)]
-pub struct EntityKindComponent(pub azalea_registry::EntityKind);
+pub struct EntityKindComponent(pub EntityKind);
 
 /// A bundle of components that every entity has.
 ///
@@ -492,12 +492,7 @@ pub struct EntityBundle {
 }
 
 impl EntityBundle {
-    pub fn new(
-        uuid: Uuid,
-        pos: Vec3,
-        kind: azalea_registry::EntityKind,
-        world_name: Identifier,
-    ) -> Self {
+    pub fn new(uuid: Uuid, pos: Vec3, kind: EntityKind, world_name: Identifier) -> Self {
         let dimensions = EntityDimensions::from(kind);
 
         Self {

@@ -2,7 +2,6 @@ use std::{
     collections::HashMap,
     fmt::Debug,
     mem,
-    net::SocketAddr,
     sync::Arc,
     thread,
     time::{Duration, Instant},
@@ -10,7 +9,9 @@ use std::{
 
 use azalea_auth::game_profile::GameProfile;
 use azalea_core::{
-    data_registry::ResolvableDataRegistry, identifier::Identifier, position::Vec3, tick::GameTick,
+    data_registry::{DataRegistryWithKey, ResolvableDataRegistry},
+    position::Vec3,
+    tick::GameTick,
 };
 use azalea_entity::{
     Attributes, EntityUpdateSystems, PlayerAbilities, Position,
@@ -21,11 +22,12 @@ use azalea_entity::{
 };
 use azalea_physics::local_player::PhysicsState;
 use azalea_protocol::{
-    ServerAddress,
+    address::{ResolvableAddr, ResolvedAddr},
     connect::Proxy,
     packets::{Packet, game::ServerboundGamePacket},
-    resolve,
+    resolve::ResolveError,
 };
+use azalea_registry::{DataRegistryKeyRef, identifier::Identifier};
 use azalea_world::{Instance, InstanceContainer, InstanceName, MinecraftEntityId, PartialInstance};
 use bevy_app::{App, AppExit, Plugin, PluginsState, SubApp, Update};
 use bevy_ecs::{
@@ -34,7 +36,6 @@ use bevy_ecs::{
     schedule::{InternedScheduleLabel, LogLevel, ScheduleBuildSettings},
 };
 use parking_lot::{Mutex, RwLock};
-use thiserror::Error;
 use tokio::{
     sync::{
         mpsc::{self},
@@ -84,15 +85,6 @@ pub struct Client {
     pub ecs: Arc<Mutex<World>>,
 }
 
-/// An error that happened while joining the server.
-#[derive(Error, Debug)]
-pub enum JoinError {
-    #[error(transparent)]
-    Resolver(#[from] resolve::ResolveError),
-    #[error("The given address could not be parsed into a ServerAddress")]
-    InvalidAddress,
-}
-
 pub struct StartClientOpts {
     pub ecs_lock: Arc<Mutex<World>>,
     pub account: Account,
@@ -103,8 +95,7 @@ pub struct StartClientOpts {
 impl StartClientOpts {
     pub fn new(
         account: Account,
-        address: ServerAddress,
-        resolved_address: SocketAddr,
+        address: ResolvedAddr,
         event_sender: Option<mpsc::UnboundedSender<Event>>,
     ) -> StartClientOpts {
         let mut app = App::new();
@@ -120,15 +111,39 @@ impl StartClientOpts {
             account,
             connect_opts: ConnectOpts {
                 address,
-                resolved_address,
-                proxy: None,
+                server_proxy: None,
+                sessionserver_proxy: None,
             },
             event_sender,
         }
     }
 
-    pub fn proxy(mut self, proxy: Proxy) -> Self {
-        self.connect_opts.proxy = Some(proxy);
+    /// Configure the SOCKS5 proxy used for connecting to the server and for
+    /// authenticating with Mojang.
+    ///
+    /// To configure these separately, for example to only use the proxy for the
+    /// Minecraft server and not for authentication, you may use
+    /// [`Self::server_proxy`] and [`Self::sessionserver_proxy`] individually.
+    pub fn proxy(self, proxy: Proxy) -> Self {
+        self.server_proxy(proxy.clone()).sessionserver_proxy(proxy)
+    }
+    /// Configure the SOCKS5 proxy that will be used for connecting to the
+    /// Minecraft server.
+    ///
+    /// To avoid errors on servers with the "prevent-proxy-connections" option
+    /// set, you should usually use [`Self::proxy`] instead.
+    ///
+    /// Also see [`Self::sessionserver_proxy`].
+    pub fn server_proxy(mut self, proxy: Proxy) -> Self {
+        self.connect_opts.server_proxy = Some(proxy);
+        self
+    }
+    /// Configure the SOCKS5 proxy that this bot will use for authenticating the
+    /// server join with Mojang's API.
+    ///
+    /// Also see [`Self::proxy`] and [`Self::server_proxy`].
+    pub fn sessionserver_proxy(mut self, proxy: Proxy) -> Self {
+        self.connect_opts.sessionserver_proxy = Some(proxy);
         self
     }
 }
@@ -158,7 +173,7 @@ impl Client {
     /// ```rust,no_run
     /// use azalea_client::{Account, Client};
     ///
-    /// #[tokio::main(flavor = "current_thread")]
+    /// #[tokio::main]
     /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///     let account = Account::offline("bot");
     ///     let (client, rx) = Client::join(account, "localhost").await?;
@@ -169,35 +184,25 @@ impl Client {
     /// ```
     pub async fn join(
         account: Account,
-        address: impl TryInto<ServerAddress>,
-    ) -> Result<(Self, mpsc::UnboundedReceiver<Event>), JoinError> {
-        let address: ServerAddress = address.try_into().map_err(|_| JoinError::InvalidAddress)?;
-        let resolved_address = resolve::resolve_address(&address).await?;
+        address: impl ResolvableAddr,
+    ) -> Result<(Self, mpsc::UnboundedReceiver<Event>), ResolveError> {
+        let address = address.resolve().await?;
         let (tx, rx) = mpsc::unbounded_channel();
 
-        let client = Self::start_client(StartClientOpts::new(
-            account,
-            address,
-            resolved_address,
-            Some(tx),
-        ))
-        .await;
+        let client = Self::start_client(StartClientOpts::new(account, address, Some(tx))).await;
         Ok((client, rx))
     }
 
     pub async fn join_with_proxy(
         account: Account,
-        address: impl TryInto<ServerAddress>,
+        address: impl ResolvableAddr,
         proxy: Proxy,
-    ) -> Result<(Self, mpsc::UnboundedReceiver<Event>), JoinError> {
-        let address: ServerAddress = address.try_into().map_err(|_| JoinError::InvalidAddress)?;
-        let resolved_address = resolve::resolve_address(&address).await?;
+    ) -> Result<(Self, mpsc::UnboundedReceiver<Event>), ResolveError> {
+        let address = address.resolve().await?;
         let (tx, rx) = mpsc::unbounded_channel();
 
-        let client = Self::start_client(
-            StartClientOpts::new(account, address, resolved_address, Some(tx)).proxy(proxy),
-        )
-        .await;
+        let client =
+            Self::start_client(StartClientOpts::new(account, address, Some(tx)).proxy(proxy)).await;
         Ok((client, rx))
     }
 
@@ -492,7 +497,7 @@ impl Client {
         &self,
         registry: &impl ResolvableDataRegistry,
     ) -> Option<Identifier> {
-        self.with_registry_holder(|registries| registry.resolve_name(registries).cloned())
+        self.with_registry_holder(|registries| registry.key(registries).map(|r| r.into_ident()))
     }
     /// Resolve the given registry to its name and data and call the given
     /// function with it.
@@ -587,6 +592,12 @@ impl Plugin for AzaleaPlugin {
 ///
 /// You can create your app with `App::new()`, but don't forget to add
 /// [`DefaultPlugins`].
+///
+/// # Panics
+///
+/// This function panics if it's called outside of a Tokio `LocalSet` (or
+/// `LocalRuntime`). This exists so Azalea doesn't unexpectedly run game ticks
+/// in the middle of blocking user code.
 #[doc(hidden)]
 pub fn start_ecs_runner(
     app: &mut SubApp,
@@ -615,7 +626,7 @@ pub fn start_ecs_runner(
 
     let (appexit_tx, appexit_rx) = oneshot::channel();
     let start_running_systems = move || {
-        tokio::spawn(async move {
+        tokio::task::spawn_local(async move {
             let appexit = run_schedule_loop(ecs_clone, outer_schedule_label).await;
             appexit_tx.send(appexit)
         });

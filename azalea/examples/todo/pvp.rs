@@ -5,8 +5,8 @@ use azalea::{
     pathfinder, prelude::*, swarm::prelude::*,
 };
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() {
+#[tokio::main]
+async fn main() -> AppExit {
     let mut accounts = Vec::new();
     let mut states = Vec::new();
 
@@ -22,7 +22,6 @@ async fn main() {
         .join_delay(Duration::from_millis(1000))
         .start("localhost")
         .await
-        .unwrap();
 }
 
 #[derive(Component, Default, Clone)]

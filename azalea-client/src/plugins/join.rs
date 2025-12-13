@@ -1,8 +1,8 @@
-use std::{net::SocketAddr, sync::Arc};
+use std::sync::Arc;
 
 use azalea_entity::{LocalEntity, indexing::EntityUuidIndex};
 use azalea_protocol::{
-    ServerAddress,
+    address::ResolvedAddr,
     common::client_information::ClientInformation,
     connect::{Connection, ConnectionError, Proxy},
     packets::{
@@ -59,14 +59,22 @@ pub struct StartJoinServerEvent {
 
 /// Options for how the connection to the server will be made.
 ///
-/// These are persisted on reconnects.
-///
-/// This is inserted as a component on clients to make auto-reconnecting work.
+/// These are persisted on reconnects. This is inserted as a component on
+/// clients to make auto-reconnecting work.
 #[derive(Debug, Clone, Component)]
 pub struct ConnectOpts {
-    pub address: ServerAddress,
-    pub resolved_address: SocketAddr,
-    pub proxy: Option<Proxy>,
+    pub address: ResolvedAddr,
+    /// The SOCKS5 proxy used for connecting to the Minecraft server.
+    pub server_proxy: Option<Proxy>,
+    /// The SOCKS5 proxy that will be used when authenticating our server join
+    /// with Mojang.
+    ///
+    /// This should typically be either the same as [`Self::server_proxy`], or
+    /// `None`.
+    ///
+    /// This is useful to set if a server has `prevent-proxy-connections`
+    /// enabled.
+    pub sessionserver_proxy: Option<Proxy>,
 }
 
 /// An event that's sent when creating the TCP connection and sending the first
@@ -158,16 +166,16 @@ pub fn handle_start_join_server_event(
 async fn create_conn_and_send_intention_packet(
     opts: ConnectOpts,
 ) -> Result<LoginConn, ConnectionError> {
-    let mut conn = if let Some(proxy) = opts.proxy {
-        Connection::new_with_proxy(&opts.resolved_address, proxy).await?
+    let mut conn = if let Some(proxy) = opts.server_proxy {
+        Connection::new_with_proxy(&opts.address.socket, proxy).await?
     } else {
-        Connection::new(&opts.resolved_address).await?
+        Connection::new(&opts.address.socket).await?
     };
 
     conn.write(ServerboundIntention {
         protocol_version: PROTOCOL_VERSION,
-        hostname: opts.address.host.clone(),
-        port: opts.address.port,
+        hostname: opts.address.server.host.clone(),
+        port: opts.address.server.port,
         intention: ClientIntention::Login,
     })
     .await?;

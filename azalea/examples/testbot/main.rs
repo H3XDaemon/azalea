@@ -32,8 +32,8 @@ use azalea::{
 use commands::{CommandSource, register_commands};
 use parking_lot::Mutex;
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() {
+#[tokio::main]
+async fn main() -> AppExit {
     let args = parse_args();
 
     thread::spawn(deadlock_detection_thread);
@@ -65,7 +65,6 @@ async fn main() {
         })
         .start(join_address)
         .await
-        .unwrap();
 }
 
 /// Runs a loop that checks for deadlocks every 10 seconds.
@@ -214,9 +213,9 @@ pub struct Args {
 }
 
 fn parse_args() -> Args {
-    let mut owner_username = "admin".to_string();
+    let mut owner_username = "admin".to_owned();
     let mut accounts = Vec::new();
-    let mut server = "localhost".to_string();
+    let mut server = "localhost".to_owned();
     let mut pathfinder_debug_particles = false;
 
     let mut args = env::args().skip(1);
@@ -244,7 +243,7 @@ fn parse_args() -> Args {
     }
 
     if accounts.is_empty() {
-        accounts.push("azalea".to_string());
+        accounts.push("azalea".to_owned());
     }
 
     Args {

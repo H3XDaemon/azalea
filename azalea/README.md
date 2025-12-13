@@ -1,7 +1,6 @@
 Azalea is a framework for creating Minecraft bots.
 
-This page is primarily meant for developers that already know they want to use Azalea.
-See the [readme](https://github.com/azalea-rs/azalea) for a higher-level overview of Azalea.
+Also see the project [README](https://github.com/azalea-rs/azalea) for a higher-level overview of Azalea.
 
 # Installation
 
@@ -42,8 +41,8 @@ use std::sync::Arc;
 use azalea::prelude::*;
 use parking_lot::Mutex;
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() {
+#[tokio::main]
+async fn main() -> AppExit {
     let account = Account::offline("bot");
     // or Account::microsoft("example@example.com").await.unwrap();
 
@@ -51,7 +50,6 @@ async fn main() {
         .set_handler(handle)
         .start(account, "localhost")
         .await
-        .unwrap();
 }
 
 #[derive(Default, Clone, Component)]
@@ -97,10 +95,6 @@ Also note that just because something is an entity in the ECS doesn't mean that 
 
 See the [Bevy Cheatbook](https://bevy-cheatbook.github.io/programming/ecs-intro.html) to learn more about Bevy ECS (and the ECS paradigm in general).
 
-# Using a single-threaded Tokio runtime
-
-Due to the fact that Azalea clients store the ECS in a Mutex that's frequently locked and unlocked, bots that rely on the `Client` or `Swarm` types may run into race condition bugs (like out-of-order events and ticks happening at suboptimal moments) if they do not set Tokio to use a single thread with `#[tokio::main(flavor = "current_thread")]`. This may change in a future version of Azalea. Setting this option will usually not result in a performance hit, and Azalea internally will keep using multiple threads for running the ECS itself (because Tokio is not used for this).
-
 # Debugging
 
 Azalea uses several relatively complex features of Rust, which may make debugging certain issues more tricky if you're not familiar with them.
@@ -121,4 +115,17 @@ If your code is simply hanging, it might be a deadlock. Enable `parking_lot`'s `
 
 Backtraces are also useful, though they're sometimes hard to read and don't always contain the actual location of the error. Run your code with `RUST_BACKTRACE=1` to enable full backtraces. If it's very long, often searching for the keyword "azalea" will help you filter out unrelated things and find the actual source of the issue.
 
+# Other notes
+
+## Using `tokio::task::spawn_local` instead of `tokio::spawn`
+
+If you spawn a task with `tokio::spawn` and move your bot into it, it's possible for Tokio to run the handler function or schedule a Minecraft tick at an unexpected moment. For instance, `bot.component::<TicksConnected>() == bot.component::<TicksConnected>()` is not guaranteed to be true inside of a `tokio::spawn`. Azalea already mitigates this in the handler function by using a Tokio [LocalSet](https://docs.rs/tokio/latest/tokio/task/struct.LocalSet.html), but that mitigation does not apply if you call `tokio::spawn` yourself. To avoid this, you must call `tokio::task::spawn_local` in place of `tokio::spawn`. Alternatively, you could also mark your main function with `#[tokio::main(flavor = "current_thread")]`.
+
+## Disabling log messages
+
+You can disable all console messages by setting the `RUST_LOG` environment variable to `off`, or you can filter log messages by setting specific log levels. For example, to disable only pathfinding logs, you can set `RUST_LOG=azalea::pathfinder=off`.
+
+See the [`env_logger`](https://docs.rs/env_logger/latest/env_logger/) crate documentation for more information.
+
 [`bevy_log`]: https://docs.rs/bevy_log
+
