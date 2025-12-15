@@ -406,9 +406,11 @@ impl Style {
             underlined: j.get("underlined").and_then(|v| v.as_bool()),
             strikethrough: j.get("strikethrough").and_then(|v| v.as_bool()),
             obfuscated: j.get("obfuscated").and_then(|v| v.as_bool()),
-            // TODO: impl deserialize functions for click_event and hover_event
-            click_event: Default::default(),
-            hover_event: Default::default(),
+            click_event: j
+                .get("click_event")
+                .cloned()
+                .and_then(|v| serde_json::from_value(v).ok()),
+            hover_event: Default::default(), // TODO: impl deserialize for hover_event
             insertion: j
                 .get("insertion")
                 .and_then(|v| v.as_str())
@@ -593,6 +595,10 @@ impl simdnbt::Deserialize for Style {
         let color: Option<TextColor> = compound
             .string("color")
             .and_then(|v| TextColor::parse(&v.to_str()));
+
+        let click_event = compound
+            .compound("click_event")
+            .and_then(|c| crate::click_event::ClickEvent::from_compound(c).ok());
         Ok(Style {
             color,
             bold,
@@ -600,6 +606,7 @@ impl simdnbt::Deserialize for Style {
             underlined,
             strikethrough,
             obfuscated,
+            click_event,
             ..Style::default()
         })
     }
