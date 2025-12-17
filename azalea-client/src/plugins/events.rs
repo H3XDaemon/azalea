@@ -6,7 +6,9 @@ use std::sync::Arc;
 use azalea_chat::FormattedText;
 use azalea_core::{position::ChunkPos, tick::GameTick};
 use azalea_entity::{Dead, InLoadedChunk};
-use azalea_protocol::packets::game::c_player_combat_kill::ClientboundPlayerCombatKill;
+use azalea_protocol::packets::game::{
+    ClientboundCommandSuggestions, c_player_combat_kill::ClientboundPlayerCombatKill,
+};
 use azalea_world::{InstanceName, MinecraftEntityId};
 use bevy_app::{App, Plugin, PreUpdate, Update};
 use bevy_ecs::prelude::*;
@@ -18,7 +20,8 @@ use crate::{
     chunks::ReceiveChunkEvent,
     disconnect::DisconnectEvent,
     packet::game::{
-        AddPlayerEvent, DeathEvent, KeepAliveEvent, RemovePlayerEvent, UpdatePlayerEvent,
+        AddPlayerEvent, CommandSuggestionsEvent, DeathEvent, KeepAliveEvent, RemovePlayerEvent,
+        UpdatePlayerEvent,
     },
     player::PlayerInfo,
 };
@@ -123,6 +126,8 @@ pub enum Event {
     KeepAlive(u64),
     /// The client disconnected from the server.
     Disconnect(Option<FormattedText>),
+    /// Suggestions for a tab-completion request.
+    CommandSuggestions(ClientboundCommandSuggestions),
     ReceiveChunk(ChunkPos),
 }
 
@@ -149,9 +154,15 @@ impl Plugin for EventsPlugin {
                 add_player_listener,
                 update_player_listener,
                 remove_player_listener,
+            ),
+        )
+        .add_systems(
+            Update,
+            (
                 keepalive_listener,
                 death_listener,
                 disconnect_listener,
+                command_suggestions_listener,
                 receive_chunk_listener,
             ),
         )
@@ -298,6 +309,17 @@ pub fn disconnect_listener(
     for event in events.read() {
         if let Ok(local_player_events) = query.get(event.entity) {
             let _ = local_player_events.send(Event::Disconnect(event.reason.clone()));
+        }
+    }
+}
+
+pub fn command_suggestions_listener(
+    query: Query<&LocalPlayerEvents>,
+    mut events: MessageReader<CommandSuggestionsEvent>,
+) {
+    for event in events.read() {
+        if let Ok(local_player_events) = query.get(event.entity) {
+            let _ = local_player_events.send(Event::CommandSuggestions(event.packet.clone()));
         }
     }
 }

@@ -161,3 +161,9 @@ pub struct GamePingEvent {
     pub entity: Entity,
     pub packet: azalea_protocol::packets::game::ClientboundPing,
 }
+
+#[derive(Clone, Debug, Message)]
+pub struct CommandSuggestionsEvent {
+    pub entity: Entity,
+    pub packet: azalea_protocol::packets::game::ClientboundCommandSuggestions,
+}

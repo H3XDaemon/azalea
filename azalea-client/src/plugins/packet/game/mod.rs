@@ -369,6 +369,17 @@ impl GamePacketHandler<'_> {
         debug!("Got difficulty packet {p:?}");
     }
 
+    pub fn command_suggestions(&mut self, p: &ClientboundCommandSuggestions) {
+        debug!("Got command suggestions packet");
+
+        as_system::<MessageWriter<CommandSuggestionsEvent>>(self.ecs, |mut events| {
+            events.write(CommandSuggestionsEvent {
+                entity: self.player,
+                packet: p.clone(),
+            });
+        });
+    }
+
     pub fn commands(&mut self, _p: &ClientboundCommands) {
         debug!("Got declare commands packet");
     }
@@ -1165,8 +1176,6 @@ impl GamePacketHandler<'_> {
     }
 
     pub fn boss_event(&mut self, _p: &ClientboundBossEvent) {}
-
-    pub fn command_suggestions(&mut self, _p: &ClientboundCommandSuggestions) {}
 
     pub fn container_set_content(&mut self, p: &ClientboundContainerSetContent) {
         debug!("Got container set content packet {p:?}");

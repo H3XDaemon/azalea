@@ -46,6 +46,7 @@ impl Plugin for PacketPlugin {
             .add_message::<game::KeepAliveEvent>()
             .add_message::<game::ResourcePackEvent>()
             .add_message::<game::InstanceLoadedEvent>()
+            .add_message::<game::CommandSuggestionsEvent>()
             .add_message::<login::ReceiveCustomQueryEvent>();
     }
 }
