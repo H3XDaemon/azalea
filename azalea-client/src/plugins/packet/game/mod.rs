@@ -1175,7 +1175,16 @@ impl GamePacketHandler<'_> {
         debug!("Got block event packet {p:?}");
     }
 
-    pub fn boss_event(&mut self, _p: &ClientboundBossEvent) {}
+    pub fn boss_event(&mut self, p: &ClientboundBossEvent) {
+        debug!("Got boss event packet {p:?}");
+
+        as_system::<MessageWriter<BossBarEvent>>(self.ecs, |mut events| {
+            events.write(BossBarEvent {
+                entity: self.player,
+                packet: p.clone(),
+            });
+        });
+    }
 
     pub fn container_set_content(&mut self, p: &ClientboundContainerSetContent) {
         debug!("Got container set content packet {p:?}");

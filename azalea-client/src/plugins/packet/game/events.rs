@@ -167,3 +167,9 @@ pub struct CommandSuggestionsEvent {
     pub entity: Entity,
     pub packet: azalea_protocol::packets::game::ClientboundCommandSuggestions,
 }
+
+#[derive(Clone, Debug, Message)]
+pub struct BossBarEvent {
+    pub entity: Entity,
+    pub packet: azalea_protocol::packets::game::c_boss_event::ClientboundBossEvent,
+}

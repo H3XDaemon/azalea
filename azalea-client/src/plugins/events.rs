@@ -20,8 +20,8 @@ use crate::{
     chunks::ReceiveChunkEvent,
     disconnect::DisconnectEvent,
     packet::game::{
-        AddPlayerEvent, CommandSuggestionsEvent, DeathEvent, KeepAliveEvent, RemovePlayerEvent,
-        UpdatePlayerEvent,
+        AddPlayerEvent, BossBarEvent, CommandSuggestionsEvent, DeathEvent, KeepAliveEvent,
+        RemovePlayerEvent, UpdatePlayerEvent,
     },
     player::PlayerInfo,
 };
@@ -128,6 +128,8 @@ pub enum Event {
     Disconnect(Option<FormattedText>),
     /// Suggestions for a tab-completion request.
     CommandSuggestions(ClientboundCommandSuggestions),
+    /// A bossbar was updated.
+    BossBar(BossBarEvent),
     ReceiveChunk(ChunkPos),
 }
 
@@ -163,6 +165,7 @@ impl Plugin for EventsPlugin {
                 death_listener,
                 disconnect_listener,
                 command_suggestions_listener,
+                bossbar_listener,
                 receive_chunk_listener,
             ),
         )
@@ -320,6 +323,14 @@ pub fn command_suggestions_listener(
     for event in events.read() {
         if let Ok(local_player_events) = query.get(event.entity) {
             let _ = local_player_events.send(Event::CommandSuggestions(event.packet.clone()));
+        }
+    }
+}
+
+pub fn bossbar_listener(query: Query<&LocalPlayerEvents>, mut events: MessageReader<BossBarEvent>) {
+    for event in events.read() {
+        if let Ok(local_player_events) = query.get(event.entity) {
+            let _ = local_player_events.send(Event::BossBar(event.clone()));
         }
     }
 }
