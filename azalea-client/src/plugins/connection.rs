@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     fmt::Debug,
     io::Cursor,
     mem,
@@ -8,6 +9,7 @@ use std::{
     },
 };
 
+use azalea_buf::AzaleaReadVar;
 use azalea_crypto::Aes128CfbEnc;
 use azalea_protocol::{
     connect::{RawReadConnection, RawWriteConnection},
@@ -37,8 +39,14 @@ use crate::packet::{config, game, login};
 pub struct ConnectionPlugin;
 impl Plugin for ConnectionPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PreUpdate, (read_packets, poll_all_writer_tasks).chain());
+        app.add_systems(PreUpdate, (read_packets, poll_all_writer_tasks).chain())
+            .init_resource::<PacketFilter>();
     }
+}
+
+#[derive(Resource, Default, Debug, Clone)]
+pub struct PacketFilter {
+    pub ignored_ids: HashSet<u32>,
 }
 
 pub fn read_packets(ecs: &mut World) {
@@ -269,6 +277,20 @@ pub fn handle_raw_packet(
             unreachable!()
         }
         ConnectionProtocol::Game => {
+            // Optimization: Filter out packets based on PacketFilter resource to save CPU
+            // on deserialization
+            if let Some(filter) = ecs.get_resource::<PacketFilter>() {
+                if !filter.ignored_ids.is_empty() {
+                    // Peek at the ID for filtering
+                    let mut cursor_for_id = std::io::Cursor::new(raw_packet);
+                    if let Ok(id) = u32::azalea_read_var(&mut cursor_for_id) {
+                        if filter.ignored_ids.contains(&id) {
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+
             let packet = Arc::new(deserialize_packet::<ClientboundGamePacket>(stream)?);
             trace!("Packet: {packet:?}");
             game::process_packet(ecs, entity, packet.as_ref());
