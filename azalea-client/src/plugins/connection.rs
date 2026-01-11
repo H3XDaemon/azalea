@@ -44,8 +44,19 @@ impl Plugin for ConnectionPlugin {
     }
 }
 
+/// Global packet filter resource. Applies to all entities that don't have
+/// their own [`EntityPacketFilter`] component.
 #[derive(Resource, Default, Debug, Clone)]
 pub struct PacketFilter {
+    pub ignored_ids: HashSet<u32>,
+}
+
+/// Per-entity packet filter component. When present on an entity, this filter
+/// is used instead of the global [`PacketFilter`] resource.
+///
+/// This allows different bots to have different filtering rules.
+#[derive(Component, Default, Debug, Clone)]
+pub struct EntityPacketFilter {
     pub ignored_ids: HashSet<u32>,
 }
 
@@ -277,14 +288,19 @@ pub fn handle_raw_packet(
             unreachable!()
         }
         ConnectionProtocol::Game => {
-            // Optimization: Filter out packets based on PacketFilter resource to save CPU
-            // on deserialization
-            if let Some(filter) = ecs.get_resource::<PacketFilter>() {
-                if !filter.ignored_ids.is_empty() {
+            // Optimization: Filter out packets based on PacketFilter to save CPU
+            // on deserialization. Entity filter takes precedence over global filter.
+            let ignored_ids: Option<&HashSet<u32>> = ecs
+                .get::<EntityPacketFilter>(entity)
+                .map(|f| &f.ignored_ids)
+                .or_else(|| ecs.get_resource::<PacketFilter>().map(|f| &f.ignored_ids));
+
+            if let Some(ignored) = ignored_ids {
+                if !ignored.is_empty() {
                     // Peek at the ID for filtering
                     let mut cursor_for_id = std::io::Cursor::new(raw_packet);
                     if let Ok(id) = u32::azalea_read_var(&mut cursor_for_id) {
-                        if filter.ignored_ids.contains(&id) {
+                        if ignored.contains(&id) {
                             return Ok(());
                         }
                     }
