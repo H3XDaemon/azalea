@@ -12,7 +12,14 @@ pub struct ClientboundExplode {
     pub player_knockback: Option<Vec3>,
     pub explosion_particle: Particle,
     pub explosion_sound: SoundEvent,
-    pub block_particles: Vec<ExplosionParticleInfo>,
+    pub block_particles: Vec<WeightedExplosionParticle>,
+}
+
+#[derive(AzBuf, Clone, Debug, PartialEq)]
+pub struct WeightedExplosionParticle {
+    pub data: ExplosionParticleInfo,
+    #[var]
+    pub weight: i32,
 }
 
 #[derive(AzBuf, Clone, Debug, PartialEq)]
