@@ -3,11 +3,11 @@ use std::fmt::{self, Display};
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "simdnbt")]
 use simdnbt::{
-    ToNbtTag,
     owned::{NbtList, NbtTag},
+    ToNbtTag,
 };
 
-use crate::{FormattedText, base_component::BaseComponent, text_component::TextComponent};
+use crate::{base_component::BaseComponent, text_component::TextComponent, FormattedText};
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
@@ -112,7 +112,7 @@ impl TranslatableComponent {
         // every time we get a char we add it to built_text, and we push it to
         // `arguments` and clear it when we add a new argument component
         let mut built_text = String::new();
-        let mut components = Vec::new();
+        let mut components: Vec<FormattedText> = Vec::new();
 
         while i < template.chars().count() {
             if template.chars().nth(i).unwrap() == '%' {
@@ -132,9 +132,15 @@ impl TranslatableComponent {
                             .cloned()
                             .unwrap_or_else(|| PrimitiveOrComponent::String("".to_owned()));
 
-                        components.push(TextComponent::new(built_text.clone()));
+                        components
+                            .push(FormattedText::Text(TextComponent::new(built_text.clone())));
                         built_text.clear();
-                        components.push(TextComponent::from(arg_component));
+                        match arg_component {
+                            PrimitiveOrComponent::FormattedText(c) => components.push(c),
+                            other => {
+                                components.push(FormattedText::Text(TextComponent::from(other)))
+                            }
+                        }
                         matched += 1;
                     }
                     _ => {
@@ -144,13 +150,27 @@ impl TranslatableComponent {
                             if let Some('$') = template.chars().nth(i + 1) {
                                 if let Some('s') = template.chars().nth(i + 2) {
                                     i += 2;
-                                    built_text.push_str(
-                                        &self
-                                            .args
-                                            .get((d - 1) as usize)
-                                            .unwrap_or(&PrimitiveOrComponent::String("".to_owned()))
-                                            .to_string(),
-                                    );
+                                    let arg = self
+                                        .args
+                                        .get((d - 1) as usize)
+                                        .unwrap_or(&PrimitiveOrComponent::String("".to_owned()))
+                                        .clone();
+
+                                    // Complex positional logic:
+                                    // We can't just push_str because we want to preserve
+                                    // components. So we must
+                                    // flush built_text and push the component.
+                                    components.push(FormattedText::Text(TextComponent::new(
+                                        built_text.clone(),
+                                    )));
+                                    built_text.clear();
+                                    match arg {
+                                        PrimitiveOrComponent::FormattedText(c) => {
+                                            components.push(c)
+                                        }
+                                        other => components
+                                            .push(FormattedText::Text(TextComponent::from(other))),
+                                    }
                                 } else {
                                     return Err(fmt::Error);
                                 }
@@ -174,11 +194,11 @@ impl TranslatableComponent {
             return Ok(TextComponent::new(built_text));
         }
 
-        components.push(TextComponent::new(built_text));
+        components.push(FormattedText::Text(TextComponent::new(built_text)));
 
         Ok(TextComponent {
             base: BaseComponent {
-                siblings: components.into_iter().map(FormattedText::Text).collect(),
+                siblings: components,
                 style: Default::default(),
             },
             text: "".to_owned(),

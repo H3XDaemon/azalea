@@ -19,3 +19,4 @@ heaptrack.*
 *.mm_profdata
 chrome_profiler.json
 1.21.11/
+.dockerignore

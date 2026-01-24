@@ -15,9 +15,29 @@ use crate::address::ServerAddr;
 pub type ResolverError = ResolveError;
 
 static RESOLVER: LazyLock<TokioResolver> = LazyLock::new(|| {
-    TokioResolver::builder(TokioConnectionProvider::default())
-        .unwrap()
-        .build()
+    // Try to use system configuration first
+    match TokioResolver::builder(TokioConnectionProvider::default()) {
+        Ok(builder) => builder.build(),
+        Err(_) => {
+            // Fallback to Google DNS if system config fails (e.g., in containers without
+            // /etc/resolv.conf)
+            use std::net::{IpAddr, Ipv4Addr};
+
+            use hickory_resolver::config::{NameServerConfigGroup, ResolverConfig};
+
+            let google_dns = NameServerConfigGroup::from_ips_clear(
+                &[
+                    IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)),
+                    IpAddr::V4(Ipv4Addr::new(8, 8, 4, 4)),
+                ],
+                53,
+                true,
+            );
+
+            let config = ResolverConfig::from_parts(None, vec![], google_dns);
+            TokioResolver::builder_with_config(config, TokioConnectionProvider::default()).build()
+        }
+    }
 });
 
 /// Resolve a Minecraft server address into an IP address and port.
